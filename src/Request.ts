@@ -7,6 +7,8 @@ export interface Headers extends IncomingHttpHeaders {
 }
 
 export class Request {
+	// eslint-disable-next-line no-undef
+	[k: string]: any
 	private req: IncomingMessage
 	app: Application
 	route: Route

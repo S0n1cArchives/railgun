@@ -53,7 +53,7 @@ export class Application {
 		}
 	}
 
-	private resolveRequest(req: IncomingMessage, res: ServerResponse): NextFunction {
+	private resolveRequest(req: IncomingMessage, res: ServerResponse): {newreq: Request, newres: Response, find: Route, middlewares: NextFunction[]} {
 		const { url } = req;
 		const path = parse(url).pathname;
 		const routes = [ ...this.routes.values() ];
@@ -63,36 +63,41 @@ export class Application {
 				findall.push(route);
 			}
 		}
-		const globalmiddlewares: NextFunction[] = [];
+		// /console.log(findall);
+		let globalmiddlewares: NextFunction[] = [];
 		for (const route of findall) {
-			for (const middleware of route.middlewares) {
-				globalmiddlewares.push(middleware);
-			}
+			globalmiddlewares = [ ...globalmiddlewares, ...route.middlewares ];
 		}
+		console.log('global', globalmiddlewares);
 		const find = this.routes.find(route => route.path === path && route.method === req.method);
-		const middlewares: NextFunction[] = [];
-		let i = 0;
+		const middlewares: NextFunction[] = [ ...globalmiddlewares, ...find.middlewares ];
 		const newreq = new Request(req, this, find);
 		const newres = new Response(req, res);
-		const next = () => {
-			find.middlewares[i++](newreq, newres, next);
-		};
-		if (globalmiddlewares.length > 0) {
-			for (const middleware of globalmiddlewares) {
-				middlewares.push(middleware);
-			}
-		}
-		if (typeof find !== 'undefined') {
-			for (const middleware of globalmiddlewares) {
-				middlewares.push(middleware);
-			}
-		}
-		return next;
+
+
+		console.log('middlewares', middlewares);
+		return { newreq,
+			newres,
+			find,
+			middlewares };
 	}
 
 
 	listen(port: number): Server {
-		this.proxy = createServer((req, res) => this.resolveRequest(req, res)());
+		this.proxy = createServer((req, res) => {
+			const { newreq, newres, find, middlewares } = this.resolveRequest(req, res);
+			let i = 0;
+			const next = () => {
+				if (typeof middlewares[i] !== 'undefined') {
+					console.log('m', middlewares, middlewares[i], i, i + 1, middlewares.length);
+					if (middlewares.length === i + 1) {
+						return middlewares[i++](newreq, newres);
+					}
+					return middlewares[i++](newreq, newres, next);
+				}
+			};
+			return next();
+		});
 		return this.proxy.listen(port);
 	}
 }
